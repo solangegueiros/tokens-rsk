@@ -1,11 +1,16 @@
 import React, { Component } from "react";
-import SimpleStorageContract from "./contracts/SimpleStorage.json";
+import Color from '../src/contracts/Color.json';
 import getWeb3 from "./getWeb3";
 
 import "./App.css";
 
 class App extends Component {
-  state = { storageValue: 0, web3: null, accounts: null, contract: null };
+  state = { 
+    account: '',
+    contract: null,
+    totalSupply: 0,
+    colors: []    
+   };
 
   componentDidMount = async () => {
     try {
@@ -13,19 +18,31 @@ class App extends Component {
       const web3 = await getWeb3();
 
       // Use web3 to get the user's accounts.
-      const accounts = await web3.eth.getAccounts();
-
+      const accounts = await web3.eth.getAccounts()
+      console.log ('account: ', accounts[0])
+      this.setState({ account: accounts[0] })    
+    
       // Get the contract instance.
-      const networkId = await web3.eth.net.getId();
-      const deployedNetwork = SimpleStorageContract.networks[networkId];
-      const instance = new web3.eth.Contract(
-        SimpleStorageContract.abi,
-        deployedNetwork && deployedNetwork.address,
-      );
+      const networkId = await web3.eth.net.getId()
+      const networkData = Color.networks[networkId]
+      if(networkData) {
+        const abi = Color.abi
+        const address = networkData.address
+        const contract = new web3.eth.Contract(abi, address)
 
-      // Set web3, accounts, and contract to the state, and then proceed with an
-      // example of interacting with the contract's methods.
-      this.setState({ web3, accounts, contract: instance }, this.runExample);
+        this.setState({ contract })
+        const totalSupply = await contract.methods.totalSupply().call()
+        this.setState({ totalSupply })
+        // Load Colors
+        for (var i = 1; i <= totalSupply; i++) {
+          const color = await contract.methods.colors(i - 1).call()
+          this.setState({
+            colors: [...this.state.colors, color]
+          })
+        }
+      } else {
+        window.alert('Smart contract not deployed to detected network.')
+      }
     } catch (error) {
       // Catch any errors for any of the above operations.
       alert(
@@ -35,36 +52,66 @@ class App extends Component {
     }
   };
 
-  runExample = async () => {
-    const { accounts, contract } = this.state;
-
-    // Stores a given value, 5 by default.
-    await contract.methods.set(5).send({ from: accounts[0] });
-
-    // Get the value from the contract to prove it worked.
-    const response = await contract.methods.get().call();
-
-    // Update state with the result.
-    this.setState({ storageValue: response });
-  };
+  mint = (color) => {
+    this.state.contract.methods.mint(color).send({ from: this.state.account })
+    .once('receipt', (receipt) => {
+      console.log ('transaction receipt: ', receipt)
+      this.setState({
+        colors: [...this.state.colors, color]
+      })
+    })
+  }
 
   render() {
-    if (!this.state.web3) {
-      return <div>Loading Web3, accounts, and contract...</div>;
-    }
     return (
-      <div className="App">
-        <h1>Good to Go!</h1>
-        <p>Your Truffle Box is installed and ready.</p>
-        <h2>Smart Contract Example</h2>
-        <p>
-          If your contracts compiled and migrated successfully, below will show
-          a stored value of 5 (by default).
-        </p>
-        <p>
-          Try changing the value stored on <strong>line 40</strong> of App.js.
-        </p>
-        <div>The stored value is: {this.state.storageValue}</div>
+      <div>
+        <nav className="navbar navbar-dark fixed-top bg-dark flex-md-nowrap p-0 shadow">
+          <a className="navbar-brand col-sm-3 col-md-2 mr-0">
+            Color Tokens
+          </a> 
+          <ul className="navbar-nav px-3">
+            <li className="nav-item text-nowrap d-none d-sm-none d-sm-block">
+              <small className="text-white"><span id="account">{this.state.account}</span></small>
+            </li>
+          </ul>
+        </nav>
+        <div className="container-fluid mt-5">
+          <div className="row">
+            <main role="main" className="col-lg-12 d-flex text-center">
+              <div className="content mr-auto ml-auto">
+                <h1>Issue Token</h1>
+                <form onSubmit={(event) => {
+                  event.preventDefault()
+                  const color = this.color.value
+                  this.mint(color)
+                }}>
+                  <input
+                    type='text'
+                    className='form-control mb-1'
+                    placeholder='e.g. #FFFFFF'
+                    ref={(input) => { this.color = input }}
+                  />
+                  <input
+                    type='submit'
+                    className='btn btn-block btn-primary'
+                    value='MINT'
+                  />
+                </form>
+              </div>
+            </main>
+          </div>
+          <hr/>
+          <div className="row text-center">
+            { this.state.colors.map((color, key) => {
+              return(
+                <div key={key} className="col-md-3 mb-3">
+                  <div className="token" style={{ backgroundColor: color }}></div>
+                  <div>{color}</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
       </div>
     );
   }
