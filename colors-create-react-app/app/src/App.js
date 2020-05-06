@@ -1,92 +1,108 @@
 import React, { Component } from 'react';
-import Web3 from 'web3'
+import Web3 from 'web3';
 import './App.css';
-import Color from '../src/contracts/Color.json'
+import Color from './contracts/Color.json';
+
+function colorHexToString(hexStr) {
+  return '#' + hexStr.substring(2);
+}
+
+function colorStringToBytes(str) {
+  if (str.length !== 7 || str.charAt(0) !== '#') {
+    throw new Error('invalid color string');
+  }
+  const hexStr = '0x' + str.substring(1);
+  return Web3.utils.hexToBytes(hexStr);
+}
 
 class App extends Component {
 
   constructor(props) {
-    super(props)
+    super(props);
     this.state = {
       account: '',
       contract: null,
       totalSupply: 0,
-      colors: []
-    }
+      colors: [],
+    };
   }
 
   async componentWillMount() {
-    await this.loadWeb3()
-    await this.loadBlockchainData()
+    await this.loadWeb3();
+    await this.loadBlockchainData();
   }
 
   async loadWeb3() {
     if (window.ethereum) {
-      window.web3 = new Web3(window.ethereum)
-      try {
-        await window.ethereum.enable()
-      } catch (error) {
-        // User denied account access...
-        console.error("User denied account access")
-      }        
+      // current web3 providers
+      window.web3 = new Web3(window.ethereum);
+      await window.ethereum.enable();
     }
-    // Legacy dapp browsers...
     else if (window.web3) {
-      window.web3 = new Web3(window.web3.currentProvider)
+      // fallback for older web3 providers
+      window.web3 = new Web3(window.web3.currentProvider);
     }
-    // If no injected web3 instance is detected, fall back to Ganache
     else {
-      window.alert('Non-Ethereum browser detected. You should consider trying MetaMask!')
+      // no web3 provider, user needs to install one in their browser
+      window.alert(
+        'No injected web3 provider detected');
     }
-    //console.log (window.web3)
-    console.log (window.web3.currentProvider)
+    console.log(window.web3.currentProvider);
   }
 
   async loadBlockchainData() {
-    const web3 = window.web3
+    const web3 = window.web3;
     // Load account
-    const accounts = await web3.eth.getAccounts()
-    console.log ('account: ', accounts[0])
-    this.setState({ account: accounts[0] })    
-  
-    const networkId = await web3.eth.net.getId()
-    const networkData = Color.networks[networkId]
-    if(networkData) {
-      const abi = Color.abi
-      const address = networkData.address
-      const contract = new web3.eth.Contract(abi, address)
-      this.setState({ contract })
-      const totalSupply = await contract.methods.totalSupply().call()
-      this.setState({ totalSupply })
-      // Load Colors
-      for (var i = 1; i <= totalSupply; i++) {
-        const color = await contract.methods.colors(i - 1).call()
-        this.setState({
-          colors: [...this.state.colors, color]
-        })
-      }
-    } else {
-      window.alert('Smart contract not deployed to detected network.')
-    }
-  }  
+    const accounts = await web3.eth.getAccounts();
+    console.log ('account: ', accounts[0]);
+    this.setState({ account: accounts[0] });
+    const networkId = await web3.eth.net.getId();
+    const networkData = Color.networks[networkId];
 
-  mint = (color) => {
-    this.state.contract.methods.mint(color).send({ from: this.state.account })
-    .once('receipt', (receipt) => {
-      console.log ('transaction receipt: ', receipt)
+    if (!networkData) {
+      window.alert('Smart contract not deployed to detected network.');
+      return;
+    }
+
+    const abi = Color.abi;
+    const address = networkData.address;
+    const contract = new web3.eth.Contract(abi, address);
+    this.setState({ contract });
+    const totalSupply = await contract
+      .methods.totalSupply().call();
+    this.setState({ totalSupply });
+
+    // Load Colors
+    for (var i = 1; i <= totalSupply; i++) {
+      const colorBytes = await contract
+        .methods.colors(i - 1).call();
+      const colorStr = colorHexToString(colorBytes);
       this.setState({
-        colors: [...this.state.colors, color]
-      })
-    })
+        colors: [...this.state.colors, colorStr],
+      });
+    }
+  }
+
+  mint = (colorStr) => {
+    const colorBytes = colorStringToBytes(colorStr);
+    this.state.contract.methods
+      .mint(colorBytes)
+      .send({ from: this.state.account })
+      .once('receipt', (receipt) => {
+        console.log ('transaction receipt: ', receipt)
+        this.setState({
+          colors: [...this.state.colors, colorStr],
+        });
+      });
   }
 
   render() {
     return (
       <div>
         <nav className="navbar navbar-dark fixed-top bg-dark flex-md-nowrap p-0 shadow">
-          <a className="navbar-brand col-sm-3 col-md-2 mr-0">
+          <span className="navbar-brand col-sm-3 col-md-2 mr-0">
             Color Tokens
-          </a> 
+          </span>
           <ul className="navbar-nav px-3">
             <li className="nav-item text-nowrap d-none d-sm-none d-sm-block">
               <small className="text-white"><span id="account">{this.state.account}</span></small>
@@ -99,14 +115,14 @@ class App extends Component {
               <div className="content mr-auto ml-auto">
                 <h1>Issue Token</h1>
                 <form onSubmit={(event) => {
-                  event.preventDefault()
-                  const color = this.color.value
-                  this.mint(color)
+                  event.preventDefault();
+                  const colorStr = this.color.value;
+                  this.mint(colorStr);
                 }}>
                   <input
                     type='text'
                     className='form-control mb-1'
-                    placeholder='e.g. #FFFFFF'
+                    placeholder='e.g. #FF00FF'
                     ref={(input) => { this.color = input }}
                   />
                   <input
@@ -120,13 +136,13 @@ class App extends Component {
           </div>
           <hr/>
           <div className="row text-center">
-            { this.state.colors.map((color, key) => {
-              return(
+            { this.state.colors.map((colorStr, key) => {
+              return (
                 <div key={key} className="col-md-3 mb-3">
-                  <div className="token" style={{ backgroundColor: color }}></div>
-                  <div>{color}</div>
+                  <div className="token" style={{ backgroundColor: colorStr }}></div>
+                  <div>{colorStr}</div>
                 </div>
-              )
+              );
             })}
           </div>
         </div>

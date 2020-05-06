@@ -11,21 +11,16 @@ const gasPriceTestnet = parseInt(JSON.parse(gasPriceTestnetRaw).result, 16);
 if (typeof gasPriceTestnet !== 'number' || isNaN(gasPriceTestnet)) {
   throw new Error('unable to retrieve network gas price from .gas-price-testnet.json');
 }
-console.log(gasPriceTestnet);
+console.log("Gas price Testnet: " + gasPriceTestnet);
 
 const path = require("path");
 
 module.exports = {
-  networks: {
-    development: {
-      host: "127.0.0.1",
-      port: 4444,
-      network_id: "*"
-    },    
+  networks: { 
     testnet: {
       provider: () => new HDWalletProvider(mnemonic, 'https://public-node.testnet.rsk.co/1.3.0/'),
       network_id: 31,
-      gasPrice: gasPriceTestnet + 1e6,
+      gasPrice: Math.floor(gasPriceTestnet * 1.1),
       networkCheckTimeout: 1e9
     },
   }, 
